@@ -5,17 +5,17 @@ namespace ClientTest;
 
 public class WsClient
 {
-    // // Event executed when client is connected
-    // public static void OnConnectedClient(object? sender, IDTSocket socket)
-    // {
-    //     Console.WriteLine("Client connected to: {0} ", socket.RemoteEndPoint);
-    // }
+    // Event executed when client is connected
+    public static void OnConnectedClient(object? sender, IDTWebSocket socket)
+    {
+        Console.WriteLine("Client connected to: {0} ", socket.Uri);
+    }
 
-    // // Event executed when client is disconnected
-    // public static void OnDisconnectedClient(object? sender, IDTSocket socket)
-    // {
-    //     Console.WriteLine("Client disconnected from: {0} ", socket.RemoteEndPoint);
-    // }
+    // Event executed when client is disconnected
+    public static void OnDisconnectedClient(object? sender, IDTWebSocket socket)
+    {
+        Console.WriteLine("Client disconnected from: {0} ", socket.Uri);
+    }
 
     // Event executed when a message is received
     public static void OnMessageReceived(object? sender, IDTMessage message)
@@ -45,8 +45,8 @@ public class WsClient
             IDTWebSocketClient client = new IDTWebSocketClient("wss://ws.postman-echo.com/raw");
 
             // Configure event handlers
-            // client.OnConnect += OnConnectedClient;
-            // client.OnDisconnect += OnDisconnectedClient;
+            client.OnConnect += OnConnectedClient;
+            client.OnDisconnect += OnDisconnectedClient;
             client.OnProcessMsg += OnMessageReceived;
 
 

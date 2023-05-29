@@ -11,7 +11,7 @@ public class IDTWebSocketClient
 
     // Private fields.
     private readonly Uri _uri;
-    private IDTWebSocket? _socket;
+    private readonly IDTWebSocket? _socket;
     private readonly byte[] _readBuffer;
     private bool _running;
     private readonly IDTStatistics _statistics;
@@ -83,9 +83,11 @@ public class IDTWebSocketClient
 
         try
         {
-            _socket?.CloseAsync().Wait();
-            _socket = null;
             _running = false;
+
+            if (_socket.Connected) OnDisconnect?.Invoke(this, _socket);
+
+            _socket?.CloseAsync().Wait();
         }
         catch
         {
@@ -116,7 +118,6 @@ public class IDTWebSocketClient
     }
 
 
-    // FIXME: Receive test. This will run on reception loop for client
     // Start receiving data from server.
     private async Task StartReceiveAsync(IDTWebSocket socket)
     {
