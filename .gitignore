@@ -1,0 +1,8 @@
+# Ignore compilation folders
+Test/Client/bin/
+Test/Client/obj/
+Test/Server/bin/
+Test/Server/obj/
+IDTNetLib/bin/
+IDTNetLib/obj/
+Docs.txt

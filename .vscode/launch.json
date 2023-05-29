@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "launch-client",
+      "type": "coreclr",
+      "request": "launch",
+      // "preLaunchTask": "build-client",
+      "program": "${workspaceFolder}/Test/Client/bin/Debug/net6.0/client.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Test/Client",
+      //"console": "internalConsole",
+      "console": "externalTerminal",
+      "stopAtEntry": false,
+      "logging": {
+        "moduleLoad": false
+      }
+    },
+
+    {
+      "name": "launch-server",
+      "type": "coreclr",
+      "request": "launch",
+      // "preLaunchTask": "build-server",
+      "program": "${workspaceFolder}/Test/Server/bin/Debug/net6.0/server.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Test/Server",
+      "console": "externalTerminal",
+      "stopAtEntry": false,
+      "logging": {
+        "moduleLoad": false
+      }
+    },
+
+    {
+      "name": ".NET Core Attach",
+      "type": "coreclr",
+      "request": "attach"
+    }
+  ],
+
+  "compounds": [
+    {
+      "name": "client-server",
+      "configurations": ["launch-client", "launch-server"],
+      // "preLaunchTask": "${defaultBuildTask}",
+      "preLaunchTask": "build-solution",
+      "stopAll": true
+    }
+  ]
+}
