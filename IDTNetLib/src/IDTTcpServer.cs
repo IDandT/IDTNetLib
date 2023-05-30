@@ -94,6 +94,7 @@ public class IDTTcpServer
     {
         try
         {
+            // FIXME: Stop accept task when not _running. Expose IsRunning public property. Review _running switches.
             _running = false;
             _listenerSocket?.Close();
             _listenerSocket = null;
@@ -248,7 +249,7 @@ public class IDTTcpServer
     {
         try
         {
-            while (_running || !_messageQueue.IsEmpty)
+            while (!_quit)
             {
                 if (!_messageQueue.IsEmpty)
                 {

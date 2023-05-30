@@ -84,6 +84,7 @@ public class IDTWebSocketServer
     {
         try
         {
+            // FIXME: Stop accept task when not _running. Expose IsRunning public property. Review _running switches.
             _running = false;
             _listenerSocket?.Close();
             _listenerSocket = null;
@@ -347,7 +348,7 @@ public class IDTWebSocketServer
     {
         try
         {
-            while (_running || !_messageQueue.IsEmpty)
+            while (!_quit)
             {
                 if (!_messageQueue.IsEmpty)
                 {
@@ -429,7 +430,7 @@ public class IDTWebSocketServer
         // TODO: Check if this is correct. Option for select mode? 0x81 is text i think.
         frame[0] = 0x82; // FIN bit set, opcode for binary data
 
-        Array.Copy(data, 0, frame, frame.Length - dataLength, dataLength);
+        Buffer.BlockCopy(data, 0, frame, frame.Length - dataLength, dataLength);
 
         return frame;
     }
