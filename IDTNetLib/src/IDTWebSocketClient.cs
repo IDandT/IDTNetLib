@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Text;
 
 namespace IDTNetLib;
 
@@ -25,6 +24,7 @@ public class IDTWebSocketClient
     public bool Connected { get => _socket?.State == WebSocketState.Open; }
     public Uri Uri { get => _uri; }
 
+
     // Public events.
     public EventHandler<IDTMessage>? OnProcessMsg;
     public EventHandler<IDTWebSocket>? OnConnect;
@@ -36,7 +36,7 @@ public class IDTWebSocketClient
         try
         {
             _uri = new Uri(uri);
-            _socket = new IDTWebSocket(uri);
+            _socket = new IDTWebSocket(uri, IDTWebSocketMode.Binary);
             _running = false;
             _readBuffer = new byte[BUFFER_SIZE];
             _statistics = new IDTStatistics();

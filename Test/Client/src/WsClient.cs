@@ -23,8 +23,7 @@ public class WsClient
         string remoteUri = message.RemoteUri!.ToString() ?? "<unknown>";
         string textMessage = message.Packet.GetString();
 
-        if (textMessage != string.Empty)
-            Console.WriteLine("Message received from {0}: \"{1}\"", remoteUri, textMessage);
+        if (textMessage != string.Empty) Console.WriteLine("Message received from {0}: \"{1}\"", remoteUri, textMessage);
     }
 
     // Run TCP Client test
@@ -35,6 +34,7 @@ public class WsClient
 
         try
         {
+
             // Set position and size of console window, useful for organize client/server execution
             IDTUtils.SetWindowPos(Process.GetCurrentProcess().MainWindowHandle, 590, 0, 580, 600);
 
@@ -42,7 +42,8 @@ public class WsClient
             Thread.Sleep(1000);
 
             // Create client object with some params
-            IDTWebSocketClient client = new IDTWebSocketClient("wss://ws.postman-echo.com/raw");
+            // IDTWebSocketClient client = new IDTWebSocketClient("wss://ws.postman-echo.com/raw");
+            IDTWebSocketClient client = new IDTWebSocketClient("ws://127.0.0.1:80");
 
             // Configure event handlers
             client.OnConnect += OnConnectedClient;

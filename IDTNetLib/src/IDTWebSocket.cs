@@ -7,6 +7,7 @@ public class IDTWebSocket
 {
     private readonly Uri _uri;
     private readonly ClientWebSocket _client;
+    private readonly WebSocketMessageType _messageType;
     private DateTime _lastActivityTime;
 
     public Uri Uri { get => _uri; }
@@ -15,10 +16,11 @@ public class IDTWebSocket
     public bool Connected { get => _client.State == WebSocketState.Open; }
 
 
-    public IDTWebSocket(string uri)
+    public IDTWebSocket(string uri, IDTWebSocketMode type)
     {
         _uri = new Uri(uri);
         _client = new ClientWebSocket();
+        _messageType = type == IDTWebSocketMode.Binary ? WebSocketMessageType.Binary : WebSocketMessageType.Text;
         _lastActivityTime = DateTime.Now;
     }
 
@@ -40,11 +42,12 @@ public class IDTWebSocket
 
     public async Task CloseAsync()
     {
-        if (_client.State != WebSocketState.Open) throw new InvalidOperationException("Socket not connected");
+        if (_client.State == WebSocketState.Aborted || _client.State == WebSocketState.Closed) return;
 
         try
         {
-            await _client.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            await _client.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            // await _client.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
         }
         catch
         {
@@ -55,9 +58,11 @@ public class IDTWebSocket
 
     public async Task SendAsync(byte[] buffer)
     {
+        if (_client.State != WebSocketState.Open) throw new WebSocketException("Socket not connected");
+
         try
         {
-            await _client.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
+            await _client.SendAsync(buffer, _messageType, true, CancellationToken.None);
         }
         catch
         {

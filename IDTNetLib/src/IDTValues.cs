@@ -18,6 +18,14 @@ public enum IDTProtocol
 }
 
 
+// Transmission modes for WebSocket messages.
+public enum IDTWebSocketMode
+{
+    Binary,
+    Text
+}
+
+
 // Struct for async data reception. Task returns this structs, and filled out buffer as argument.
 public class UDPReceiveResult
 {

@@ -4,6 +4,8 @@ namespace ClientTest
     {
         public static void Main()
         {
+            Console.InputEncoding = System.Text.Encoding.Unicode;
+
             try
             {
                 // TCPCLient.Test();
