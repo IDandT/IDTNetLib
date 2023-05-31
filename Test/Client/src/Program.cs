@@ -1,22 +1,22 @@
-namespace ClientTest
-{
-    public class Program
-    {
-        public static void Main()
-        {
-            Console.InputEncoding = System.Text.Encoding.Unicode;
+namespace ClientTest;
 
-            try
-            {
-                // TCPCLient.Test();
-                UDPClient.Test();
-                // WsClient.Test();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-                Console.ReadKey();
-            };
+
+public class Program
+{
+    public static void Main()
+    {
+        Console.InputEncoding = System.Text.Encoding.Unicode;
+
+        try
+        {
+            // TCPCLient.Test();
+            // UDPClient.Test();
+            WsClient.Test();
         }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.ToString());
+            Console.ReadKey();
+        };
     }
 }

@@ -11,7 +11,6 @@ public class IDTWebSocketServer
     private const int BUFFER_SIZE = IDTConstants.BUFFER_SIZE;
 
     // Private fields.
-    private bool _quit;
     private bool _running;
     private readonly IPAddress _ipAddr;
     private readonly IPEndPoint _endPoint;
@@ -29,6 +28,10 @@ public class IDTWebSocketServer
     public int PendingMessages { get => _messageQueue.Count; }
     public IDTStatistics Statistics { get => _statistics; }
     public IPEndPoint EndPoint { get => _endPoint; }
+    public bool IsRunning { get => _running; }
+
+    // Background task for accepting new connections.
+    private CancellationTokenSource _cancellationTokenSource;
 
     // Public events.
     public EventHandler<IDTSocket>? OnConnect;
@@ -44,8 +47,8 @@ public class IDTWebSocketServer
             _ipAddr = IPAddress.Parse(ip);
             _endPoint = new IPEndPoint(_ipAddr, port);
             _listenerSocket = null;
-            _quit = false;
             _running = false;
+            _cancellationTokenSource = new CancellationTokenSource();
 
             _statistics = new IDTStatistics();
         }
@@ -59,6 +62,10 @@ public class IDTWebSocketServer
     // Starts run server. Create a socket and launch accept background task.
     public void Start()
     {
+        if (_running) throw new InvalidOperationException("Server is already running");
+
+        _cancellationTokenSource = new CancellationTokenSource();
+
         try
         {
             _listenerSocket = new IDTSocket(_endPoint.Address.ToString(), _endPoint.Port, IDTProtocol.TCP);
@@ -70,8 +77,12 @@ public class IDTWebSocketServer
             _listenerSocket.Listen(10);
 
             // Start accepting new connections.
-            Task.Run(() => StartAccept());
+            Task acceptTask = Task.Run(() => StartAccept(_cancellationTokenSource.Token));
 
+            // Start processing message Queue.
+            Task dequeueTask = Task.Run(() => StartProcessingMessages(_cancellationTokenSource.Token));
+
+            _running = true;
         }
         catch (AggregateException e)
         {
@@ -82,12 +93,22 @@ public class IDTWebSocketServer
     // Stop server. Close listener socket.
     public void Stop()
     {
+        if (!_running) throw new InvalidOperationException("Server is already stopped");
+
         try
         {
-            // FIXME: Stop accept task when not _running. Expose IsRunning public property. Review _running switches.
+            // Disconnect all clients.
+            foreach (IDTSocket s in _connectionList)
+            {
+                s.Close();
+            }
+
             _running = false;
             _listenerSocket?.Close();
             _listenerSocket = null;
+
+            // Stop background tasks.
+            _cancellationTokenSource.Cancel();
         }
         catch
         {
@@ -96,30 +117,20 @@ public class IDTWebSocketServer
     }
 
 
-    // Quit main loop from server.
-    public void Quit()
-    {
-        _quit = true;
-    }
-
-
     // Task than listen for new clients. Creates a background receive task for every accepted client.
-    private async Task StartAccept()
+    private async Task StartAccept(CancellationToken cancellationToken)
     {
         if (_listenerSocket is null) throw new NullReferenceException("Socket not connected");
 
-        _running = true;
-
         try
         {
-            // Start processing message Queue.
-            var dequeueTask = Task.Run(() => StartProcessingMessages());
 
-            while (!_quit)
+
+            while (!cancellationToken.IsCancellationRequested)
             {
                 IDTSocket newClientSocket = await _listenerSocket.AcceptAsync();
 
-                _running = true;
+                if (cancellationToken.IsCancellationRequested) break;
 
                 // Check connection limit.
                 if (_connectionList.Count >= _maximumClients)
@@ -127,7 +138,7 @@ public class IDTWebSocketServer
                     // Send error message to client.                    
                     int sentBytes = newClientSocket.Send(IDTPacket.CreateFromString("Server is full").GetBytes());
 
-                    await Task.Delay(500);
+                    await Task.Delay(500, cancellationToken);
 
                     // Close connection and keep listening.
                     newClientSocket.Close();
@@ -146,7 +157,7 @@ public class IDTWebSocketServer
                 }
 
                 // Start handling data reception for new client.
-                var receiveTask = Task.Run(() => StartReceiveAsync(newClientSocket));
+                var receiveTask = Task.Run(() => StartReceiveAsync(newClientSocket, cancellationToken), cancellationToken);
 
 
                 _statistics.ConnectionsAccepted++;
@@ -166,14 +177,14 @@ public class IDTWebSocketServer
 
 
     // We have one running task of this method for every connected client.
-    private async Task StartReceiveAsync(IDTSocket socket)
+    private async Task StartReceiveAsync(IDTSocket socket, CancellationToken cancellationToken)
     {
         try
         {
             int clientRemainingBufferBytes = 0;
             byte[] clientReadBuffer = new byte[BUFFER_SIZE];
 
-            while (_running)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 int bytesReceived = 0;
 
@@ -187,6 +198,8 @@ public class IDTWebSocketServer
                     bytesReceived = await socket.ReceiveAsync(clientReadBuffer, clientRemainingBufferBytes, BUFFER_SIZE - clientRemainingBufferBytes);
                     // Console.WriteLine("with remaining");
                 }
+
+                if (cancellationToken.IsCancellationRequested) break;
 
                 _statistics.ReceiveOperations++;
                 _statistics.BytesReceived += bytesReceived;
@@ -209,10 +222,6 @@ public class IDTWebSocketServer
             if (_connectionList.Contains(socket))
             {
                 _connectionList.Remove(socket);
-                if (_connectionList.Count == 0)
-                {
-                    _running = false;
-                }
             }
 
             _statistics.ConnectionsDropped++;
@@ -344,11 +353,11 @@ public class IDTWebSocketServer
 
 
     // Message processing task. Launch one event for every message received.
-    private async Task StartProcessingMessages()
+    private async Task StartProcessingMessages(CancellationToken cancellationToken)
     {
         try
         {
-            while (!_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (!_messageQueue.IsEmpty)
                 {
@@ -360,7 +369,7 @@ public class IDTWebSocketServer
                 }
                 else
                 {
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
         }
@@ -371,9 +380,17 @@ public class IDTWebSocketServer
     }
 
 
+    // Delete all messages from queue.
+    public void ClearMessageQueue()
+    {
+        _messageQueue.Clear();
+    }
+
+
     // Sends one packet over the socket.
     public int Send(IDTSocket socket, IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
         if (socket is null || !socket.Connected) throw new NullReferenceException("Socket not connected");
 
         try

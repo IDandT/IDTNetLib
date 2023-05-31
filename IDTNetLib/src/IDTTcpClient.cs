@@ -64,7 +64,6 @@ public class IDTTcpClient
     public void Connect()
     {
         if (_running) throw new InvalidOperationException("Client is already running");
-
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
 
         _cancellationTokenSource = new CancellationTokenSource();
@@ -97,7 +96,6 @@ public class IDTTcpClient
     public void Disconnect()
     {
         if (!_running) throw new InvalidOperationException("Client is already stopped");
-
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -123,8 +121,6 @@ public class IDTTcpClient
     {
         try
         {
-            _running = true;
-
             int remainingBufferBytes = 0;
 
             while (!cancellationToken.IsCancellationRequested)

@@ -23,7 +23,10 @@ public class IDTWebSocketClient
     public IDTStatistics Statistics { get => _statistics; }
     public bool Connected { get => _socket?.State == WebSocketState.Open; }
     public Uri Uri { get => _uri; }
+    public bool IsRunning { get => _running; }
 
+    // Background task for accepting new connections.
+    private CancellationTokenSource _cancellationTokenSource;
 
     // Public events.
     public EventHandler<IDTMessage>? OnProcessMsg;
@@ -31,6 +34,7 @@ public class IDTWebSocketClient
     public EventHandler<IDTWebSocket>? OnDisconnect;
 
 
+    // Client constructor.
     public IDTWebSocketClient(string uri)
     {
         try
@@ -39,6 +43,8 @@ public class IDTWebSocketClient
             _socket = new IDTWebSocket(uri, IDTWebSocketMode.Binary);
             _running = false;
             _readBuffer = new byte[BUFFER_SIZE];
+            _cancellationTokenSource = new CancellationTokenSource();
+
             _statistics = new IDTStatistics();
         }
         catch
@@ -48,9 +54,13 @@ public class IDTWebSocketClient
     }
 
 
+    // Open connection to server.
     public void Connect()
     {
+        if (_running) throw new InvalidOperationException("Client is already running");
         if (_socket is null) throw new NullReferenceException("Socket not connected");
+
+        _cancellationTokenSource = new CancellationTokenSource();
 
         try
         {
@@ -61,10 +71,10 @@ public class IDTWebSocketClient
             _running = true;
 
             // Start handling data reception.
-            var receiveTask = Task.Run(() => StartReceiveAsync(_socket));
+            var receiveTask = Task.Run(() => StartReceiveAsync(_socket, _cancellationTokenSource.Token));
 
             // Start processing message Queue.
-            var dequeueTask = Task.Run(() => StartProcessingMessages());
+            var dequeueTask = Task.Run(() => StartProcessingMessages(_cancellationTokenSource.Token));
 
             // Launch event.
             OnConnect?.Invoke(this, _socket);
@@ -76,6 +86,7 @@ public class IDTWebSocketClient
     }
 
 
+    // Disconnect from server.
     public void Disconnect()
     {
         if (_socket is null) throw new NullReferenceException("Socket not connected");
@@ -88,6 +99,9 @@ public class IDTWebSocketClient
             if (_socket.Connected) OnDisconnect?.Invoke(this, _socket);
 
             _socket?.CloseAsync().Wait();
+
+            // Stop background tasks.
+            _cancellationTokenSource.Cancel();
         }
         catch
         {
@@ -96,6 +110,7 @@ public class IDTWebSocketClient
     }
 
 
+    // Sends one packet over the socket.
     public void Send(IDTPacket packet)
     {
         if (_socket is null) throw new NullReferenceException("Socket not created");
@@ -105,7 +120,6 @@ public class IDTWebSocketClient
         {
             // _socket.SendAsync(packet.GetBytes()).Wait();
             _socket.SendAsync(packet.Body!).Wait();
-
 
             _statistics.SendOperations++;
             _statistics.PacketsSent++;
@@ -119,14 +133,11 @@ public class IDTWebSocketClient
 
 
     // Start receiving data from server.
-    private async Task StartReceiveAsync(IDTWebSocket socket)
+    private async Task StartReceiveAsync(IDTWebSocket socket, CancellationToken cancellationToken)
     {
         try
         {
-            _running = true;
-
-
-            while (_running)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -173,11 +184,11 @@ public class IDTWebSocketClient
 
 
     // Message processing task. Launch one event for every message received.
-    private async Task StartProcessingMessages()
+    private async Task StartProcessingMessages(CancellationToken cancellationToken)
     {
         try
         {
-            while (_running || !_messageQueue.IsEmpty)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (!_messageQueue.IsEmpty && OnProcessMsg != null)
                 {
@@ -189,7 +200,7 @@ public class IDTWebSocketClient
                 }
                 else
                 {
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
         }

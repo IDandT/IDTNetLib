@@ -3,6 +3,7 @@ using IDTNetLib;
 
 namespace ClientTest;
 
+
 public class WsClient
 {
     // Event executed when client is connected
@@ -55,17 +56,21 @@ public class WsClient
 
 
             // Send messages to server until user press enter
-            string input = "";
-            do
+            while (true)
             {
-                input = Console.ReadLine() ?? "";
+                string input = Console.ReadLine() ?? "";
 
-                if (input != "")
+                if (input == "") break;
+
+                try
                 {
                     client.Send(IDTPacket.CreateFromString(input));
                 }
-
-            } while (input != "");
+                catch (Exception e)
+                {
+                    Console.WriteLine("CLIENT ERROR: {0}", e.Message);
+                }
+            }
 
 
             client.Disconnect();
