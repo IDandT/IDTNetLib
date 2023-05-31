@@ -9,8 +9,8 @@ namespace ServerTest
             try
             {
                 // TCPServer.Test();
-                // UDPServer.Test();
-                WsServer.Test();
+                UDPServer.Test();
+                // WsServer.Test();
             }
             catch (Exception e)
             {

@@ -9,8 +9,8 @@ namespace ClientTest
             try
             {
                 // TCPCLient.Test();
-                // UDPClient.Test();
-                WsClient.Test();
+                UDPClient.Test();
+                // WsClient.Test();
             }
             catch (Exception e)
             {

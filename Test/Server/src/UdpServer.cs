@@ -21,17 +21,24 @@ namespace ServerTest
         // Event executed when a message is received
         public static void OnMessageReceived(object? sender, IDTMessage message)
         {
-            // Get message received
-            string textMessage = message.Packet.GetString();
-            string sourceEP = message.RemoteEndPoint!.ToString() ?? "<unknown>";
+            try
+            {
+                // Get message received
+                string textMessage = message.Packet.GetString();
+                string sourceEP = message.RemoteEndPoint!.ToString() ?? "<unknown>";
 
-            Console.WriteLine("Message received from {0}: \"{1}\". Acknowledge sent.", sourceEP, textMessage);
+                Console.WriteLine("Message received from {0}: \"{1}\". Acknowledge sent.", sourceEP, textMessage);
 
-            // Response to remote host
-            IDTUdpServer server = (IDTUdpServer)sender!;
-            IDTPacket responsePacket = IDTPacket.CreateFromString($"ACK: {textMessage}");
+                // Response to remote host
+                IDTUdpServer server = (IDTUdpServer)sender!;
+                IDTPacket responsePacket = IDTPacket.CreateFromString($"ACK: {textMessage}");
 
-            server.SendTo(responsePacket, message.RemoteEndPoint);
+                server.SendTo(responsePacket, message.RemoteEndPoint);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("SERVER ERROR: {0}", e.Message);
+            }
         }
 
 
@@ -62,10 +69,55 @@ namespace ServerTest
                 server.Start();
 
 
-                while (true)
+                // Commands for start, stop, quit and get server status.
+                Console.WriteLine("Commands:");
+                Console.WriteLine("start   -  Start server.");
+                Console.WriteLine("stop    -  Stop server.");
+                Console.WriteLine("status  -  Get server status.");
+                Console.WriteLine("quit    -  Close server.");
+
+
+                bool quit = false;
+
+                while (!quit)
                 {
-                    Thread.Sleep(1000);
+                    string input = Console.ReadLine() ?? "";
+
+                    switch (input.ToLower())
+                    {
+                        case "start":
+
+                            if (!server.IsRunning) server.Start();
+                            Console.WriteLine("Server started.");
+                            break;
+
+                        case "stop":
+
+                            if (server.IsRunning) server.Stop();
+                            Console.WriteLine("Server stopped.");
+                            break;
+
+                        case "status":
+
+                            Console.WriteLine("Server status: {0}", server.IsRunning ? "Running" : "Stopped");
+                            break;
+
+                        case "quit":
+
+                            quit = true;
+                            return;
+
+                        default:
+                            break;
+                    }
                 }
+
+
+                // Stop server and end test.
+                if (server.IsRunning) server.Stop();
+
+                Console.WriteLine("Server closed. Press any key.");
+                Console.ReadKey();
 
             }
             catch (Exception e)

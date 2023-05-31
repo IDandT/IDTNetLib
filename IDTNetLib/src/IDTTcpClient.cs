@@ -28,6 +28,10 @@ public class IDTTcpClient
     public IDTStatistics Statistics { get => _statistics; }
     public bool Connected { get => _clientSocket?.Connected ?? false; }
     public IPEndPoint EndPoint { get => _endPoint; }
+    public bool IsRunning { get => _running; }
+
+    // Background task for accepting new connections.
+    private CancellationTokenSource _cancellationTokenSource;
 
     // Public events.
     public EventHandler<IDTMessage>? OnProcessMsg;
@@ -45,6 +49,7 @@ public class IDTTcpClient
             _clientSocket = new IDTSocket(ip, port, IDTProtocol.TCP);
             _readBuffer = new byte[BUFFER_SIZE];
             _running = false;
+            _cancellationTokenSource = new CancellationTokenSource();
 
             _statistics = new IDTStatistics();
         }
@@ -58,7 +63,11 @@ public class IDTTcpClient
     // Open connection to server.
     public void Connect()
     {
+        if (_running) throw new InvalidOperationException("Client is already running");
+
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
+
+        _cancellationTokenSource = new CancellationTokenSource();
 
         try
         {
@@ -69,10 +78,10 @@ public class IDTTcpClient
             _running = true;
 
             // Start handling data reception.
-            var receiveTask = Task.Run(() => StartReceiveAsync(_clientSocket));
+            var receiveTask = Task.Run(() => StartReceiveAsync(_clientSocket, _cancellationTokenSource.Token));
 
             // Start processing message Queue.
-            var dequeueTask = Task.Run(() => StartProcessingMessages());
+            var dequeueTask = Task.Run(() => StartProcessingMessages(_cancellationTokenSource.Token));
 
             // Launch event.
             OnConnect?.Invoke(this, _clientSocket);
@@ -87,6 +96,8 @@ public class IDTTcpClient
     // Disconnect from server.
     public void Disconnect()
     {
+        if (!_running) throw new InvalidOperationException("Client is already stopped");
+
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -96,6 +107,9 @@ public class IDTTcpClient
             if (_clientSocket.Connected) OnDisconnect?.Invoke(this, _clientSocket);
 
             _clientSocket?.Close();
+
+            // Stop background tasks.
+            _cancellationTokenSource.Cancel();
         }
         catch
         {
@@ -105,7 +119,7 @@ public class IDTTcpClient
 
 
     // Start receiving data from server.
-    private async Task StartReceiveAsync(IDTSocket socket)
+    private async Task StartReceiveAsync(IDTSocket socket, CancellationToken cancellationToken)
     {
         try
         {
@@ -113,7 +127,7 @@ public class IDTTcpClient
 
             int remainingBufferBytes = 0;
 
-            while (_running)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 int bytesReceived = 0;
 
@@ -126,6 +140,8 @@ public class IDTTcpClient
                 {
                     bytesReceived = await socket.ReceiveAsync(_readBuffer, remainingBufferBytes, BUFFER_SIZE - remainingBufferBytes);
                 }
+
+                if (cancellationToken.IsCancellationRequested) break;
 
                 _statistics.ReceiveOperations++;
                 _statistics.BytesReceived += bytesReceived;
@@ -161,6 +177,7 @@ public class IDTTcpClient
     // Sends one packet over the socket.
     public int Send(IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Client is stopped");
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -183,6 +200,7 @@ public class IDTTcpClient
     // Sends one packet over the socket asynchronously.
     public async Task<int> SendAsync(IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Client is stopped");
         if (_clientSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -203,11 +221,11 @@ public class IDTTcpClient
 
 
     // Message processing task. Launch one event for every message received.
-    private async Task StartProcessingMessages()
+    private async Task StartProcessingMessages(CancellationToken cancellationToken)
     {
         try
         {
-            while (_running || !_messageQueue.IsEmpty)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (!_messageQueue.IsEmpty && OnProcessMsg != null)
                 {
@@ -219,7 +237,7 @@ public class IDTTcpClient
                 }
                 else
                 {
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
         }

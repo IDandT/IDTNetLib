@@ -13,7 +13,6 @@ public class IDTUdpServer
     private const int BUFFER_SIZE = IDTConstants.BUFFER_SIZE;
 
     // Private fields.
-    private bool _quit;
     private bool _running;
     private readonly IPAddress _ipAddr;
     private readonly IPEndPoint _endPoint;
@@ -35,6 +34,10 @@ public class IDTUdpServer
     public int PendingMessages { get => _messageQueue.Count; }
     public IDTStatistics Statistics { get => _statistics; }
     public IPEndPoint EndPoint { get => _endPoint; }
+    public bool IsRunning { get => _running; }
+
+    // Background task for accepting new connections.
+    private CancellationTokenSource _cancellationTokenSource;
 
     // Public events.
     public EventHandler<UDPClientInfo>? OnConnect;
@@ -50,8 +53,8 @@ public class IDTUdpServer
             _ipAddr = IPAddress.Parse(ip);
             _endPoint = new IPEndPoint(_ipAddr, port);
             _listenerSocket = null;
-            _quit = false;
             _running = false;
+            _cancellationTokenSource = new CancellationTokenSource();
 
             _statistics = new IDTStatistics();
         }
@@ -65,6 +68,10 @@ public class IDTUdpServer
     // Starts run server. Create a socket and launch some background tasks.
     public void Start()
     {
+        if (_running) throw new InvalidOperationException("Server is already running");
+
+        _cancellationTokenSource = new CancellationTokenSource();
+
         try
         {
             _listenerSocket = new IDTSocket(_endPoint.Address.ToString(), _endPoint.Port, IDTProtocol.UDP);
@@ -73,16 +80,17 @@ public class IDTUdpServer
 
             _statistics.Reset();
 
-            _running = true;
-
             // Start handling data reception.
-            var receiveTask = Task.Run(() => StartReceiveAsync(_listenerSocket));
+            var receiveTask = Task.Run(() => StartReceiveAsync(_listenerSocket, _cancellationTokenSource.Token));
 
             // Start processing message Queue.
-            var dequeueTask = Task.Run(() => StartProcessingMessages());
+            var dequeueTask = Task.Run(() => StartProcessingMessages(_cancellationTokenSource.Token));
 
             // Start checking inactive clients.
-            var checkTask = Task.Run(() => StartCheckingInactiveClients());
+            var checkTask = Task.Run(() => StartCheckingInactiveClients(_cancellationTokenSource.Token));
+
+            _running = true;
+
         }
         catch (AggregateException e)
         {
@@ -94,12 +102,22 @@ public class IDTUdpServer
     // Stop server. Close listener socket.
     public void Stop()
     {
+        if (!_running) throw new InvalidOperationException("Server is already stopped");
+
         try
         {
-            // FIXME: Stop accept task when not _running. Expose IsRunning public property. Review _running switches.
+            // Disconnect all clients.
+            foreach (UDPClientInfo client in _connectionList.ToList())
+            {
+                _connectionList.Remove(client);
+            }
+
             _running = false;
             _listenerSocket?.Close();
             _listenerSocket = null;
+
+            // Stop background tasks.
+            _cancellationTokenSource.Cancel();
         }
         catch
         {
@@ -108,22 +126,15 @@ public class IDTUdpServer
     }
 
 
-    // Quit main loop from server.
-    public void Quit()
-    {
-        _quit = true;
-    }
-
-
     // We have one running task of this method for every connected client.
-    private async Task StartReceiveAsync(IDTSocket socket)
+    private async Task StartReceiveAsync(IDTSocket socket, CancellationToken cancellationToken)
     {
         try
         {
             int clientRemainingBufferBytes = 0;
             byte[] clientReadBuffer = new byte[BUFFER_SIZE];
 
-            while (_running && !_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 UDPReceiveResult result;
 
@@ -146,6 +157,7 @@ public class IDTUdpServer
                     continue;
                 }
 
+                if (cancellationToken.IsCancellationRequested) break;
 
                 // Check if is new client, or it is in endpoints client list
                 int index = _connectionList.FindIndex(x => x.EndPoint.ToString() == result.EndPoint.ToString());
@@ -159,7 +171,7 @@ public class IDTUdpServer
                         int sentBytes = _listenerSocket!.SendTo(IDTPacket.CreateFromString("Server is full").GetBytes(), result.EndPoint);
 
                         // keep listening
-                        await Task.Delay(500);
+                        await Task.Delay(500, cancellationToken);
 
                         _statistics.SendOperations++;
                         _statistics.BytesSent += sentBytes;
@@ -207,8 +219,6 @@ public class IDTUdpServer
 
                 _statistics.PacketsReceived += packetsReceived;
             }
-
-            _running = false;
         }
         catch
         {
@@ -218,11 +228,11 @@ public class IDTUdpServer
 
 
     // Message processing task. Launch one event for every message received.
-    private async Task StartProcessingMessages()
+    private async Task StartProcessingMessages(CancellationToken cancellationToken)
     {
         try
         {
-            while (!_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (!_messageQueue.IsEmpty)
                 {
@@ -234,7 +244,7 @@ public class IDTUdpServer
                 }
                 else
                 {
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
         }
@@ -255,6 +265,7 @@ public class IDTUdpServer
     // Sends one packet over the socket.
     public int SendTo(IDTPacket packet, EndPoint endPoint)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
         if (_listenerSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -277,6 +288,7 @@ public class IDTUdpServer
     // Sends one packet over the socket asynchronously to remote endpoint.
     public async Task<int> SendToAsync(IDTPacket packet, EndPoint endPoint)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
         if (_listenerSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
@@ -299,6 +311,8 @@ public class IDTUdpServer
     // Send a packet to all connected clients.
     public int BroadcastToAll(IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
         try
         {
             int totalSentBytes = 0;
@@ -326,6 +340,8 @@ public class IDTUdpServer
     // Send a packet to specified clients.
     public int BroadcastTo(UDPClientInfo[] clients, IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
         if (clients.Length == 0) return 0;
 
         try
@@ -355,16 +371,16 @@ public class IDTUdpServer
     // UDP is connectionless, so we need to periodically check for inactive clients. We have 2 timeout intervals:
     // Ping timeout:   is the time between last activity time, and ping request to client.
     // Remove timeout: is the time between last activity time, and client "disconnection".
-    public async Task StartCheckingInactiveClients()
+    public async Task StartCheckingInactiveClients(CancellationToken cancellationToken)
     {
         if (_listenerSocket is null) throw new NullReferenceException("Socket not connected");
 
         try
         {
-            while (_running && !_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 // Check clients every N seconds
-                await Task.Delay(TimeSpan.FromSeconds(_clientPingTimeout));
+                await Task.Delay(TimeSpan.FromSeconds(_clientPingTimeout), cancellationToken);
 
                 if (_connectionList.Count > 0)
                 {

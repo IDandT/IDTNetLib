@@ -13,13 +13,12 @@ public class IDTTcpServer
     private const int BUFFER_SIZE = IDTConstants.BUFFER_SIZE;
 
     // Private fields.
-    private bool _quit;
     private bool _running;
     private readonly IPAddress _ipAddr;
     private readonly IPEndPoint _endPoint;
     private readonly IDTProtocol _protocol;
     private IDTSocket? _listenerSocket;
-    private int _maximumClients = 2;
+    private int _maximumClients = 4;
     private readonly List<IDTSocket> _connectionList = new List<IDTSocket>();
     private readonly IDTStatistics _statistics;
 
@@ -32,6 +31,10 @@ public class IDTTcpServer
     public int PendingMessages { get => _messageQueue.Count; }
     public IDTStatistics Statistics { get => _statistics; }
     public IPEndPoint EndPoint { get => _endPoint; }
+    public bool IsRunning { get => _running; }
+
+    // Background task for accepting new connections.
+    private CancellationTokenSource _cancellationTokenSource;
 
     // Public events.
     public EventHandler<IDTSocket>? OnConnect;
@@ -48,8 +51,8 @@ public class IDTTcpServer
             _endPoint = new IPEndPoint(_ipAddr, port);
             _protocol = IDTProtocol.TCP;
             _listenerSocket = null;
-            _quit = false;
             _running = false;
+            _cancellationTokenSource = new CancellationTokenSource();
 
             _statistics = new IDTStatistics();
         }
@@ -63,6 +66,10 @@ public class IDTTcpServer
     // Starts run server. Create a socket and launch accept background task.
     public void Start()
     {
+        if (_running) throw new InvalidOperationException("Server is already running");
+
+        _cancellationTokenSource = new CancellationTokenSource();
+
         try
         {
             _listenerSocket = new IDTSocket(_endPoint.Address.ToString(), _endPoint.Port, _protocol);
@@ -74,13 +81,12 @@ public class IDTTcpServer
             _listenerSocket.Listen(10);
 
             // Start accepting new connections.
-            Task.Run(() => StartAccept());
+            Task acceptTask = Task.Run(() => StartAccept(_cancellationTokenSource.Token));
 
+            // Start processing message Queue.
+            Task dequeueTask = Task.Run(() => StartProcessingMessages(_cancellationTokenSource.Token));
 
-            // New thread for long running task?
-            // Thread acceptThread = new Thread(async () => await StartAccept());
-            // acceptThread.Start();
-            // acceptThread.Join();
+            _running = true;
         }
         catch (AggregateException e)
         {
@@ -92,13 +98,24 @@ public class IDTTcpServer
     // Stop server. Close listener socket.
     public void Stop()
     {
+        if (!_running) throw new InvalidOperationException("Server is already stopped");
+
         try
         {
-            // FIXME: Stop accept task when not _running. Expose IsRunning public property. Review _running switches.
+            // Disconnect all clients.
+            foreach (IDTSocket s in _connectionList)
+            {
+                s.Close();
+            }
+
             _running = false;
             _listenerSocket?.Close();
             _listenerSocket = null;
+
+            // Stop background tasks.
+            _cancellationTokenSource.Cancel();
         }
+
         catch
         {
             throw;
@@ -106,30 +123,18 @@ public class IDTTcpServer
     }
 
 
-    // Quit main loop from server.
-    public void Quit()
-    {
-        _quit = true;
-    }
-
-
     // Task than listen for new clients. Creates a background receive task for every accepted client.
-    private async Task StartAccept()
+    private async Task StartAccept(CancellationToken cancellationToken)
     {
         if (_listenerSocket is null) throw new NullReferenceException("Socket not connected");
 
-        _running = true;
-
         try
         {
-            // Start processing message Queue.
-            var dequeueTask = Task.Run(() => StartProcessingMessages());
-
-            while (!_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 IDTSocket newClientSocket = await _listenerSocket.AcceptAsync();
 
-                _running = true;
+                if (cancellationToken.IsCancellationRequested) break;
 
                 // Check connection limit.
                 if (_connectionList.Count >= _maximumClients)
@@ -138,7 +143,7 @@ public class IDTTcpServer
                     int sentBytes = newClientSocket.Send(IDTPacket.CreateFromString("Server is full").GetBytes());
 
 
-                    await Task.Delay(500);
+                    await Task.Delay(500, cancellationToken);
 
                     // Close connection and keep listening.
                     newClientSocket.Close();
@@ -157,8 +162,7 @@ public class IDTTcpServer
                 }
 
                 // Start handling data reception for new client.
-                var receiveTask = Task.Run(() => StartReceiveAsync(newClientSocket));
-
+                var receiveTask = Task.Run(() => StartReceiveAsync(newClientSocket, cancellationToken), cancellationToken);
 
                 _statistics.ConnectionsAccepted++;
                 _statistics.ConnectionsPeak = _connectionList.Count > _statistics.ConnectionsPeak
@@ -177,14 +181,14 @@ public class IDTTcpServer
 
 
     // We have one running task of this method for every connected client.
-    private async Task StartReceiveAsync(IDTSocket socket)
+    private async Task StartReceiveAsync(IDTSocket socket, CancellationToken cancellationToken)
     {
         try
         {
             int clientRemainingBufferBytes = 0;
             byte[] clientReadBuffer = new byte[BUFFER_SIZE];
 
-            while (_running)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 int bytesReceived = 0;
 
@@ -198,6 +202,8 @@ public class IDTTcpServer
                     bytesReceived = await socket.ReceiveAsync(clientReadBuffer, clientRemainingBufferBytes, BUFFER_SIZE - clientRemainingBufferBytes);
 
                 }
+
+                if (cancellationToken.IsCancellationRequested) break;
 
                 _statistics.ReceiveOperations++;
                 _statistics.BytesReceived += bytesReceived;
@@ -221,7 +227,7 @@ public class IDTTcpServer
                 _statistics.PacketsReceived += packetsReceived;
             }
 
-            _running = false;
+            Console.WriteLine("Receive task cancelled");
         }
         catch
         {
@@ -233,10 +239,6 @@ public class IDTTcpServer
             if (_connectionList.Contains(socket))
             {
                 _connectionList.Remove(socket);
-                if (_connectionList.Count == 0)
-                {
-                    _running = false;
-                }
             }
 
             _statistics.ConnectionsDropped++;
@@ -245,11 +247,11 @@ public class IDTTcpServer
 
 
     // Message processing task. Launch one event for every message received.
-    private async Task StartProcessingMessages()
+    private async Task StartProcessingMessages(CancellationToken cancellationToken)
     {
         try
         {
-            while (!_quit)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (!_messageQueue.IsEmpty)
                 {
@@ -261,9 +263,11 @@ public class IDTTcpServer
                 }
                 else
                 {
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
+
+            Console.WriteLine("Message processing  task cancelled");
         }
         catch
         {
@@ -282,6 +286,7 @@ public class IDTTcpServer
     // Sends one packet over the socket.
     public int Send(IDTSocket socket, IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
         if (socket is null || !socket.Connected) throw new NullReferenceException("Socket not connected");
 
         try
@@ -304,6 +309,7 @@ public class IDTTcpServer
     // Sends one packet over the socket asynchronously.
     public async Task<int> SendAsync(IDTSocket socket, IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
         if (socket is null || !socket.Connected) throw new NullReferenceException("Socket not connected");
 
         try
@@ -326,6 +332,8 @@ public class IDTTcpServer
     // Send a packet to all connected clients.
     public int BroadcastToAll(IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
         try
         {
             int totalSentBytes = 0;
@@ -356,6 +364,8 @@ public class IDTTcpServer
     // Send a packet to specified clients.
     public int BroadcastTo(IDTSocket[] clients, IDTPacket packet)
     {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
         if (clients.Length == 0) return 0;
 
         try

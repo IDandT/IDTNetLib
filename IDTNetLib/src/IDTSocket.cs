@@ -31,7 +31,7 @@ public class IDTSocket
 
     // Public properties.
     public bool Connected { get => _connected; }
-    public EndPoint? RemoteEndPoint { get => _socket?.RemoteEndPoint!; }
+    public EndPoint? RemoteEndPoint { get => _socket!.RemoteEndPoint! ?? _socket!.LocalEndPoint!; }
     public byte[] BufferData { get => _buffer; set => _buffer = value; }
     public DateTime LastActivityTime { get => _lastActivityTime; }
 
@@ -108,11 +108,9 @@ public class IDTSocket
     // Close connection from remote host.
     public void Close()
     {
-        if (_protocol != IDTProtocol.TCP) throw new Exception("Operation not supported for this protocol");
-
         try
         {
-            _socket?.Shutdown(SocketShutdown.Both);
+            if (_socket!.Connected) _socket?.Shutdown(SocketShutdown.Both);
             _socket?.Close();
             _socket = null;
             _connected = false;
@@ -320,11 +318,25 @@ public class IDTSocket
             Task<int> receiveTask = Task.Factory.FromAsync(
                 (callback, state) =>
                 {
-                    return _socket.BeginReceiveFrom(_buffer, 0, _buffer.Length, SocketFlags.None, ref remoteEP, callback, state);
+                    try
+                    {
+                        return _socket.BeginReceiveFrom(_buffer, 0, _buffer.Length, SocketFlags.None, ref remoteEP, callback, state);
+                    }
+                    catch
+                    {
+                        throw;
+                    }
                 },
                 ar =>
                 {
-                    return _socket.EndReceiveFrom(ar, ref remoteEP);
+                    try
+                    {
+                        return _socket.EndReceiveFrom(ar, ref remoteEP);
+                    }
+                    catch
+                    {
+                        throw;
+                    }
                 },
                 null);
 
