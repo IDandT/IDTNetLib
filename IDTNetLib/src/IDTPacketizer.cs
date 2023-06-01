@@ -44,7 +44,7 @@ public class IDTPacketizer
                     // Creates new packet from the buffer segment..
                     byte[] packetData = new byte[packetLength];
                     Buffer.BlockCopy(buffer, offset + 4, packetData, 0, packetLength);
-                    offset += 4 + packetLength;
+
 
                     IDTPacket packet = new IDTPacket(packetData);
 
@@ -74,15 +74,18 @@ public class IDTPacketizer
                         }
                     }
 
-
-                    // Copies remaining bytes to the beginning of the buffer.
-                    if (offset <= (bytesRead + remainingBufferBytes))
-                    {
-                        Buffer.BlockCopy(buffer, offset, buffer, 0, (bytesRead + remainingBufferBytes) - offset);
-
-                        remainingBufferBytes = (bytesRead + remainingBufferBytes) - offset;
-                    }
+                    // Move pointer to next packet.
+                    offset += 4 + packetLength;
                 }
+
+                // Copies remaining bytes to the beginning of the buffer.
+                if (offset <= (bytesRead + remainingBufferBytes))
+                {
+                    Buffer.BlockCopy(buffer, offset, buffer, 0, (bytesRead + remainingBufferBytes) - offset);
+
+                    remainingBufferBytes = (bytesRead + remainingBufferBytes) - offset;
+                }
+
                 return packetCount;
             }
             return packetCount;
