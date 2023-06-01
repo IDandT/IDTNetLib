@@ -395,15 +395,86 @@ public class IDTWebSocketServer
 
         try
         {
-            byte[] frame = BuildResponseFrame(packet.Body!);
+            byte[] buffer = BuildResponseFrame(packet.Body!);
 
-            int sentBytes = socket.Send(frame);
+            int sentBytes = socket.Send(buffer);
 
             _statistics.SendOperations++;
             _statistics.PacketsSent++;
             _statistics.BytesSent += sentBytes;
 
             return sentBytes;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+
+
+    // Send a packet to all connected clients.
+    public int BroadcastToAll(IDTPacket packet)
+    {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
+        try
+        {
+            int totalSentBytes = 0;
+
+            byte[] buffer = BuildResponseFrame(packet.Body!);
+
+            foreach (IDTSocket socket in _connectionList)
+            {
+                if (socket.Connected)
+                {
+                    int sentBytes = socket.Send(buffer);
+
+                    totalSentBytes += sentBytes;
+
+                    _statistics.SendOperations++;
+                    _statistics.PacketsSent++;
+                    _statistics.BytesSent += sentBytes;
+                }
+            }
+
+            return totalSentBytes;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+
+    // Send a packet to specified clients.
+    public int BroadcastTo(IDTSocket[] clients, IDTPacket packet)
+    {
+        if (!_running) throw new InvalidOperationException("Server is stopped");
+
+        if (clients.Length == 0) return 0;
+
+        try
+        {
+            int totalSentBytes = 0;
+
+            byte[] buffer = BuildResponseFrame(packet.Body!);
+
+            foreach (IDTSocket socket in clients)
+            {
+                if (socket.Connected)
+                {
+                    int sentBytes = socket.Send(buffer);
+
+                    totalSentBytes += sentBytes;
+
+                    _statistics.SendOperations++;
+                    _statistics.PacketsSent++;
+                    _statistics.BytesSent += sentBytes;
+                }
+            }
+
+            return totalSentBytes;
         }
         catch
         {

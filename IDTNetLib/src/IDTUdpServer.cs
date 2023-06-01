@@ -317,9 +317,11 @@ public class IDTUdpServer
         {
             int totalSentBytes = 0;
 
+            byte[] buffer = packet.GetBytes();
+
             foreach (UDPClientInfo endPoint in _connectionList)
             {
-                int sentBytes = _listenerSocket!.SendTo(packet.GetBytes(), endPoint.EndPoint);
+                int sentBytes = _listenerSocket!.SendTo(buffer, endPoint.EndPoint);
 
                 totalSentBytes += sentBytes;
 
@@ -348,9 +350,11 @@ public class IDTUdpServer
         {
             int totalSentBytes = 0;
 
+            byte[] buffer = packet.GetBytes();
+
             foreach (UDPClientInfo endPoint in clients)
             {
-                int sentBytes = _listenerSocket!.SendTo(packet.GetBytes(), endPoint.EndPoint);
+                int sentBytes = _listenerSocket!.SendTo(buffer, endPoint.EndPoint);
 
                 totalSentBytes += sentBytes;
 

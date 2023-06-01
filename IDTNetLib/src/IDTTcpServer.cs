@@ -338,11 +338,13 @@ public class IDTTcpServer
         {
             int totalSentBytes = 0;
 
+            byte[] buffer = packet.GetBytes();
+
             foreach (IDTSocket socket in _connectionList)
             {
                 if (socket.Connected)
                 {
-                    int sentBytes = socket.Send(packet.GetBytes());
+                    int sentBytes = socket.Send(buffer);
 
                     totalSentBytes += sentBytes;
 
@@ -372,11 +374,13 @@ public class IDTTcpServer
         {
             int totalSentBytes = 0;
 
+            byte[] buffer = packet.GetBytes();
+
             foreach (IDTSocket socket in clients)
             {
                 if (socket.Connected)
                 {
-                    int sentBytes = socket.Send(packet.GetBytes());
+                    int sentBytes = socket.Send(buffer);
 
                     totalSentBytes += sentBytes;
 
