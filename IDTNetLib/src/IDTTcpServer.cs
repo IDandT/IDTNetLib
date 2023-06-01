@@ -226,8 +226,6 @@ public class IDTTcpServer
 
                 _statistics.PacketsReceived += packetsReceived;
             }
-
-            Console.WriteLine("Receive task cancelled");
         }
         catch
         {
@@ -266,8 +264,6 @@ public class IDTTcpServer
                     await Task.Delay(100, cancellationToken);
                 }
             }
-
-            Console.WriteLine("Message processing  task cancelled");
         }
         catch
         {
