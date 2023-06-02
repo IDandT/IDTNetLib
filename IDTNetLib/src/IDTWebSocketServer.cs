@@ -128,7 +128,7 @@ public class IDTWebSocketServer
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                IDTSocket newClientSocket = await _listenerSocket.AcceptAsync();
+                IDTSocket newClientSocket = await _listenerSocket.AcceptAsync(IDTProtocol.WEBSOCKET);
 
                 if (cancellationToken.IsCancellationRequested) break;
 
@@ -269,6 +269,9 @@ public class IDTWebSocketServer
 
             // Handshake reply.
             socket.Send(response);
+
+            // Flag that the handshake is done.
+            socket.HandShakeDone = true;
         }
         else
         {

@@ -28,12 +28,15 @@ public class IDTSocket
     private byte[] _buffer;
     private DateTime _lastActivityTime;
     private bool _connected;
+    private bool _handShakeDone;
 
     // Public properties.
     public bool Connected { get => _connected; }
     public EndPoint? RemoteEndPoint { get => _socket!.RemoteEndPoint! ?? _socket!.LocalEndPoint!; }
     public byte[] BufferData { get => _buffer; set => _buffer = value; }
     public DateTime LastActivityTime { get => _lastActivityTime; }
+    public bool IsWebSocket { get => _protocol == IDTProtocol.WEBSOCKET; }
+    public bool HandShakeDone { get => _handShakeDone; set => _handShakeDone = value; }
 
 
     // Constructor for new socket.
@@ -47,9 +50,11 @@ public class IDTSocket
             _socket = null;
             _buffer = new byte[BUFFER_SIZE];
             _lastActivityTime = DateTime.Now;
+            _handShakeDone = false;
 
-            if (_protocol == IDTProtocol.TCP)
+            if (_protocol != IDTProtocol.UDP)
             {
+                // A Web Socket uses underline a TCP standard. We use TCP for both for TCP and WEBSOCKET.
                 _socket = new Socket(_ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 _socket?.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, 1);
             }
@@ -66,19 +71,19 @@ public class IDTSocket
 
 
     // Constructor for create IDTAyncSocket from standar .NET socket.
-    public IDTSocket(Socket socket)
+    public IDTSocket(Socket socket, IDTProtocol protocol)
     {
         try
         {
             _socket = socket;
             _ipAddr = ((IPEndPoint)_socket.RemoteEndPoint!).Address;
             _endPoint = new IPEndPoint(_ipAddr, ((IPEndPoint)_socket.RemoteEndPoint).Port);
-            _protocol = socket.ProtocolType == ProtocolType.Tcp ? IDTProtocol.TCP : IDTProtocol.UDP;
+            _protocol = protocol;
             _buffer = new byte[BUFFER_SIZE];
             _lastActivityTime = DateTime.Now;
             _connected = true;
 
-            if (_protocol == IDTProtocol.TCP)
+            if (_protocol != IDTProtocol.UDP)
             {
                 _socket?.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, 1);
             }
@@ -160,9 +165,9 @@ public class IDTSocket
 
 
     // Accept incoming connection asyncronously. Returns socket for new connection.
-    public async Task<IDTSocket> AcceptAsync()
+    public async Task<IDTSocket> AcceptAsync(IDTProtocol newSocketProtocol)
     {
-        if (_protocol != IDTProtocol.TCP) throw new Exception("Operation not supported for this protocol");
+        if (_protocol == IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
 
         try
         {
@@ -176,7 +181,7 @@ public class IDTSocket
 
             _lastActivityTime = DateTime.Now;
 
-            return new IDTSocket(newSocket);
+            return new IDTSocket(newSocket, newSocketProtocol);
         }
         catch (Exception)
         {
@@ -188,10 +193,8 @@ public class IDTSocket
     // Send buffer data through socket.
     public int Send(byte[] sendBuffer)
     {
-        if (_protocol != IDTProtocol.TCP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_protocol == IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
+        if (_socket is null || (_protocol != IDTProtocol.UDP && !_socket.Connected)) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -212,9 +215,7 @@ public class IDTSocket
     public int SendTo(byte[] sendBuffer, EndPoint? remoteEndPoint = null)
     {
         if (_protocol != IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_socket is null || (_protocol != IDTProtocol.UDP && !_socket.Connected)) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -234,10 +235,8 @@ public class IDTSocket
     // Send buffer data through socket asyncronously.
     public async Task<int> SendAsync(byte[] sendBuffer)
     {
-        if (_protocol != IDTProtocol.TCP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_protocol == IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
+        if (_socket is null || (_protocol != IDTProtocol.UDP && !_socket.Connected)) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -258,9 +257,7 @@ public class IDTSocket
     public async Task<int> SendToAsync(byte[] sendBuffer, EndPoint? remoteEndPoint = null)
     {
         if (_protocol != IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_socket is null) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -280,10 +277,8 @@ public class IDTSocket
     // Start reception of data asyncronously. Stores new data in outBuffer and return number of bytes received.
     public async Task<int> ReceiveAsync(byte[] outBuffer)
     {
-        if (_protocol != IDTProtocol.TCP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_protocol == IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
+        if (_socket is null || (_protocol != IDTProtocol.UDP && !_socket.Connected)) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -306,9 +301,7 @@ public class IDTSocket
     public async Task<UDPReceiveResult> ReceiveFromAsync(byte[] outBuffer)
     {
         if (_protocol != IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_socket is null) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -361,8 +354,8 @@ public class IDTSocket
     // reading "count" bytes.
     public async Task<int> ReceiveAsync(byte[] outBuffer, int offset, int count)
     {
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_protocol == IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
+        if (_socket is null || (_protocol != IDTProtocol.UDP && !_socket.Connected)) throw new NullReferenceException("Socket not connected");
 
         try
         {
@@ -388,9 +381,7 @@ public class IDTSocket
     public async Task<UDPReceiveResult> ReceiveFromAsync(byte[] outBuffer, int offset, int count)
     {
         if (_protocol != IDTProtocol.UDP) throw new Exception("Operation not supported for this protocol");
-
-        if (_socket is null || (_protocol == IDTProtocol.TCP && !_socket.Connected))
-            throw new NullReferenceException("Socket not connected");
+        if (_socket is null) throw new NullReferenceException("Socket not connected");
 
         try
         {

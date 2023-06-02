@@ -132,7 +132,7 @@ public class IDTTcpServer
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                IDTSocket newClientSocket = await _listenerSocket.AcceptAsync();
+                IDTSocket newClientSocket = await _listenerSocket.AcceptAsync(IDTProtocol.TCP);
 
                 if (cancellationToken.IsCancellationRequested) break;
 

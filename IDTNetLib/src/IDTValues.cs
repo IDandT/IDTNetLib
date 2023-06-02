@@ -15,8 +15,8 @@ public enum IDTProtocol
 {
     TCP,
     UDP,
+    WEBSOCKET
 }
-
 
 // Transmission modes for WebSocket messages.
 public enum IDTWebSocketMode

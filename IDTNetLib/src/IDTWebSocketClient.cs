@@ -174,7 +174,7 @@ public class IDTWebSocketClient
 
             _statistics.ConnectionsDropped++;
 
-            if (socket.Connected) OnDisconnect?.Invoke(this, socket);
+            OnDisconnect?.Invoke(this, socket);
 
             socket?.CloseAsync();
 
