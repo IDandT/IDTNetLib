@@ -24,7 +24,7 @@ public class IDTPacketizer
             {
                 int offset = 0;
 
-                // Checks if we have enough bytes for read lenght.
+                // Checks if we have enough bytes for read length.
                 while (offset + 4 <= bytesRead)
                 {
                     int packetLength = BitConverter.ToInt32(buffer, offset);

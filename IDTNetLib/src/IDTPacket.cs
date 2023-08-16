@@ -5,13 +5,13 @@ namespace IDTNetLib;
 
 /// <summary>
 /// Represents a packet of data. Its formed by:
-///     - Header (4 bytes) that specifies the lenght of the body.
+///     - Header (4 bytes) that specifies the length of the body.
 ///     - Body itself.
 /// </summary>
 public class IDTPacket
 {
 
-    public int Lenght;
+    public int Length;
     public byte[]? Body;
 
     // Returns true if packet is filled (header len = body len)
@@ -20,14 +20,14 @@ public class IDTPacket
         get
         {
             if (Body == null) return false;
-            return Lenght == Body.Length;
+            return Length == Body.Length;
         }
     }
 
     // Creates empty packet.
     public IDTPacket()
     {
-        Lenght = 0;
+        Length = 0;
         Body = null;
     }
 
@@ -36,7 +36,7 @@ public class IDTPacket
     public IDTPacket(byte[] data)
     {
 
-        Lenght = data.Length;
+        Length = data.Length;
         Body = data;
     }
 
@@ -45,7 +45,7 @@ public class IDTPacket
     public byte[] GetBytes()
     {
         if (Body == null) throw new NullReferenceException("Packet body is null, cannot get string from it.");
-        byte[] len = BitConverter.GetBytes(Lenght);
+        byte[] len = BitConverter.GetBytes(Length);
         return IDTUtils.ConcatByteArrays(len, Body, Body.Length);
     }
 
@@ -85,9 +85,9 @@ public class IDTPacket
     // Creates a new packet from a byte buffer.
     public static IDTPacket CreateFromBytes(byte[] bytes)
     {
-        int lenght = BitConverter.ToInt32(bytes, 0);
-        byte[] body = new byte[lenght];
-        Buffer.BlockCopy(bytes, 4, body, 0, lenght);
+        int length = BitConverter.ToInt32(bytes, 0);
+        byte[] body = new byte[length];
+        Buffer.BlockCopy(bytes, 4, body, 0, length);
         return new IDTPacket(body);
     }
 }

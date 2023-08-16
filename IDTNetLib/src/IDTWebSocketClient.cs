@@ -123,7 +123,7 @@ public class IDTWebSocketClient
 
             _statistics.SendOperations++;
             _statistics.PacketsSent++;
-            _statistics.BytesSent += packet.Lenght;
+            _statistics.BytesSent += packet.Length;
         }
         catch
         {
@@ -149,7 +149,7 @@ public class IDTWebSocketClient
                     // Console.WriteLine(Encoding.ASCII.GetString(_readBuffer, 0, result.Count));
 
                     IDTPacket packet = new IDTPacket();
-                    packet.Lenght = result.Count;
+                    packet.Length = result.Count;
                     packet.Body = new byte[result.Count];
                     Array.Copy(_readBuffer, packet.Body, result.Count);
 
